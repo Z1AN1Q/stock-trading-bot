@@ -51,7 +51,7 @@ async function monitor() {
       type: 'market',
       time_in_force: 'gtc'
     });
-    process.exit(0);
+    return;
   }
 }
 
