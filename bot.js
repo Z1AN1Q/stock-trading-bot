@@ -60,3 +60,4 @@ async function monitor() {
   await buyStock();
   setInterval(monitor, 60 * 1000); // check every minute
 })();
+console.log("Bot started successfully");
