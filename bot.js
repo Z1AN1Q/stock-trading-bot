@@ -1,62 +1,89 @@
-import Alpaca from '@alpacahq/alpaca-trade-api';
-import fetch from 'node-fetch';
+import Alpaca from "@alpacahq/alpaca-trade-api";
 
-// ⚙️ Configure API (paper trading)
-const alpaca = new Alpaca({
-  keyId: process.env.APCA_API_KEY_ID,
-  secretKey: process.env.APCA_API_SECRET_KEY,
-  paper: true,   // paper trading mode
-  usePolygon: false
-});
+// ---------------- CONFIG ----------------
+const SYMBOL = "AAPL";
+const QTY = 1;
 
-// Your stock symbol
-const SYMBOL = 'AAPL';
-
-// Thresholds
 const STOP_LOSS = 0.90;   // -10%
 const TAKE_PROFIT = 1.50; // +50%
 
-let buyPrice = null;
+// ----------------------------------------
 
-// Buy a share once
+const alpaca = new Alpaca({
+  keyId: process.env.APCA_API_KEY_ID,
+  secretKey: process.env.APCA_API_SECRET_KEY,
+  paper: true
+});
+
+let buyPrice = null;
+let hasSold = false;
+
+// Buy stock once
 async function buyStock() {
-  const current = await alpaca.lastQuote(SYMBOL);
-  buyPrice = current.askprice;
-  console.log(`Bought ${SYMBOL} at $${buyPrice}`);
+  const quote = await alpaca.lastQuote(SYMBOL);
+  buyPrice = quote.askprice;
+
+  console.log(`Buying ${SYMBOL} at $${buyPrice}`);
+
   await alpaca.createOrder({
     symbol: SYMBOL,
-    qty: 1,
-    side: 'buy',
-    type: 'market',
-    time_in_force: 'gtc'
+    qty: QTY,
+    side: "buy",
+    type: "market",
+    time_in_force: "gtc"
   });
 }
 
-// Check price every minute
+// Monitor price
 async function monitor() {
-  if (!buyPrice) return;
+  if (!buyPrice || hasSold) return;
 
   const quote = await alpaca.lastQuote(SYMBOL);
   const price = quote.askprice;
-  const change = price / buyPrice;
+  const percentChange = ((price - buyPrice) / buyPrice) * 100;
 
-  console.log(`Price: $${price} (${((change - 1) * 100).toFixed(2)}%)`);
+  console.log(
+    `${SYMBOL} | Price: $${price.toFixed(2)} | Change: ${percentChange.toFixed(2)}%`
+  );
 
-  if (change <= STOP_LOSS || change >= TAKE_PROFIT) {
-    console.log(`Threshold met — selling at $${price}`);
-    await alpaca.createOrder({
-      symbol: SYMBOL,
-      qty: 1,
-      side: 'sell',
-      type: 'market',
-      time_in_force: 'gtc'
-    });
+  if (price <= buyPrice * STOP_LOSS) {
+    console.log("STOP LOSS hit — selling");
+    await sellStock(price);
+  }
+
+  if (price >= buyPrice * TAKE_PROFIT) {
+    console.log("TAKE PROFIT hit — selling");
+    await sellStock(price);
   }
 }
 
-// Start
+// Sell stock
+async function sellStock(price) {
+  await alpaca.createOrder({
+    symbol: SYMBOL,
+    qty: QTY,
+    side: "sell",
+    type: "market",
+    time_in_force: "gtc"
+  });
+
+  hasSold = true;
+
+  console.log(`Sold ${SYMBOL} at $${price.toFixed(2)}`);
+  console.log("Bot will stay alive but stop trading.");
+}
+
+// ---------------- START BOT ----------------
 (async () => {
+  console.log("Bot starting...");
+
   await buyStock();
-  setInterval(monitor, 60 * 1000); // check every minute
+
+  // Check price every 60 seconds
+  setInterval(monitor, 60 * 1000);
+
+  // Heartbeat to keep GitHub Actions alive
+  setInterval(() => {
+    console.log("Bot heartbeat — still running");
+  }, 60 * 1000);
 })();
-console.log("Bot started successfully");
